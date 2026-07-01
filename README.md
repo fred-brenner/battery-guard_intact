@@ -1,10 +1,25 @@
 # Battery Guard Lite
 
+Replacement for the outdated and decommissioned [Battery Guard](https://intact-battery-guard.de.softonic.com/android) app from Intact.
+
+100% local and telemetry-free.
+
+### Description
 Battery Guard Lite is a minimal native Android Kotlin app for displaying live 12 V battery voltage from a BLE device named `BLE-VoltageCheck`.
 
-It is local-only. It does not use Cordova, cloud services, analytics, internet access, accounts, storage, export, push, history, or camera features.
+It is local-only. It does not use Cordova, cloud services, analytics, internet access, accounts, export, push, or camera features. The app stores only private on-device daily voltage readings for the bottom history chart.
+
+## Display
+
+- Top: live voltage from BLE notifications.
+- Middle: 12 V car battery gauge with red, yellow, and green ranges.
+- Bottom: one saved voltage point per day, keeping the latest 20 saved dates.
+
+If another voltage arrives on the same day, that day's saved point is overwritten with the latest reading.
 
 ## BLE protocol
+
+Note: I configured this for my own BLE device and some IDs might need to be changed. Please create a ticket if you encounter an issue with your "BLE-VoltageCheck" device.
 
 - Device name: `BLE-VoltageCheck`
 - Service UUID: `00001814-0000-1000-8000-00805f9b34fb`
@@ -41,6 +56,10 @@ app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Install:
+
+Download the APK release and install on your Android device.
+
+OR
 
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
