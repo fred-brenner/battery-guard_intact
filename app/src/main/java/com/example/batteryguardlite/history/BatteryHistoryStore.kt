@@ -14,10 +14,25 @@ class BatteryHistoryStore(context: Context) {
             readings = readings(),
             newReading = DailyVoltageHistory.readingFor(millivolts, timestampMillis)
         )
-        preferences.edit()
-            .putString(KEY_READINGS, DailyVoltageHistory.serialize(next))
-            .apply()
+        persist(next)
         return next
+    }
+
+    fun exportCsv(): String = DailyVoltageHistory.toCsv(readings())
+
+    fun importCsv(rawCsv: String): CsvImportResult {
+        val result = DailyVoltageHistory.importCsv(
+            existingReadings = readings(),
+            rawCsv = rawCsv
+        )
+        persist(result.readings)
+        return result
+    }
+
+    private fun persist(readings: List<DailyVoltageReading>) {
+        preferences.edit()
+            .putString(KEY_READINGS, DailyVoltageHistory.serialize(readings))
+            .apply()
     }
 
     companion object {

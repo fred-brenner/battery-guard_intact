@@ -2,9 +2,12 @@ package com.example.batteryguardlite.ui
 
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,11 +18,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -28,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -36,6 +46,7 @@ import com.example.batteryguardlite.ble.BatteryType
 import com.example.batteryguardlite.ble.BleState
 import com.example.batteryguardlite.history.DailyVoltageReading
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.PI
@@ -52,6 +63,8 @@ fun BatteryScreen(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onRetry: () -> Unit,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val receiving = state as? BleState.Receiving
@@ -63,52 +76,138 @@ fun BatteryScreen(
             modifier = modifier.fillMaxSize(),
             color = Color(0xFFF8FAFC)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .safeDrawingPadding()
-                    .padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                HeaderSection(
-                    voltageText = voltageText,
-                    state = state
-                )
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val compactHeight = maxHeight < 680.dp
+                val veryCompactHeight = maxHeight < 560.dp
+                val narrowWidth = maxWidth < 390.dp
+                val horizontalPadding = if (narrowWidth) 12.dp else 20.dp
+                val verticalPadding = if (compactHeight) 8.dp else 16.dp
+                val sectionSpacing = if (compactHeight) 6.dp else 10.dp
+                val gaugeHeight = when {
+                    veryCompactHeight -> 130.dp
+                    compactHeight -> 175.dp
+                    else -> 230.dp
+                }
+                val historyMinimumHeight = when {
+                    veryCompactHeight -> 80.dp
+                    compactHeight -> 110.dp
+                    else -> 150.dp
+                }
 
-                VoltageGauge(
-                    voltage = liveVoltage,
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(230.dp)
-                )
+                        .fillMaxSize()
+                        .safeDrawingPadding()
+                        .padding(
+                            start = horizontalPadding,
+                            top = verticalPadding,
+                            end = horizontalPadding,
+                            bottom = if (compactHeight) 8.dp else 14.dp
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(sectionSpacing)
+                ) {
+                    if (narrowWidth) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            HeaderSection(
+                                voltageText = voltageText,
+                                state = state,
+                                compact = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            HistoryFileButtons(
+                                onBackup = onBackup,
+                                onRestore = onRestore,
+                                compact = true
+                            )
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            HeaderSection(
+                                voltageText = voltageText,
+                                state = state,
+                                compact = compactHeight
+                            )
+                            HistoryFileButtons(
+                                onBackup = onBackup,
+                                onRestore = onRestore,
+                                modifier = Modifier.align(Alignment.TopEnd)
+                            )
+                        }
+                    }
 
-                VoltageHistoryChart(
-                    readings = historyReadings,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .heightIn(min = 150.dp)
-                )
+                    VoltageGauge(
+                        voltage = liveVoltage,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(gaugeHeight)
+                    )
 
-                ActionButtons(
-                    state = state,
-                    onGrantPermissions = onGrantPermissions,
-                    onStart = onStart,
-                    onStop = onStop,
-                    onRetry = onRetry
-                )
+                    VoltageHistoryChart(
+                        readings = historyReadings,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .heightIn(min = historyMinimumHeight)
+                    )
+
+                    ActionButtons(
+                        state = state,
+                        onGrantPermissions = onGrantPermissions,
+                        onStart = onStart,
+                        onStop = onStop,
+                        onRetry = onRetry
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun HeaderSection(
-    voltageText: String,
-    state: BleState
+private fun HistoryFileButtons(
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        HistoryFileButton(text = "Backup", onClick = onBackup, compact = compact)
+        HistoryFileButton(text = "Restore", onClick = onRestore, compact = compact)
+    }
+}
+
+@Composable
+private fun HistoryFileButton(
+    text: String,
+    onClick: () -> Unit,
+    compact: Boolean
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier
+            .width(if (compact) 68.dp else 76.dp)
+            .height(32.dp),
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+    ) {
+        Text(text = text, fontSize = if (compact) 10.sp else 11.sp)
+    }
+}
+
+@Composable
+private fun HeaderSection(
+    voltageText: String,
+    state: BleState,
+    compact: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -120,7 +219,7 @@ private fun HeaderSection(
         )
         Text(
             text = voltageText,
-            fontSize = 54.sp,
+            fontSize = if (compact) 46.sp else 54.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.sp,
             color = Color(0xFF0F766E)
@@ -217,12 +316,59 @@ private fun VoltageHistoryChart(
     readings: List<DailyVoltageReading>,
     modifier: Modifier = Modifier
 ) {
+    val sorted = readings.sortedBy { it.dayIndex }
+    var selectedReading by remember { mutableStateOf<DailyVoltageReading?>(null) }
+
     Box(modifier = modifier) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val left = 18.dp.toPx()
-            val right = size.width - 18.dp.toPx()
-            val top = 22.dp.toPx()
-            val bottom = size.height - 20.dp.toPx()
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(sorted) {
+                    detectTapGestures { tap ->
+                        if (sorted.isEmpty()) return@detectTapGestures
+
+                        val left = HISTORY_LEFT_MARGIN.toPx()
+                        val right = size.width.toFloat() - HISTORY_RIGHT_MARGIN.toPx()
+                        val top = HISTORY_TOP_MARGIN.toPx()
+                        val bottom = size.height.toFloat() - HISTORY_BOTTOM_MARGIN.toPx()
+                        val chartWidth = max(1f, right - left)
+                        val chartHeight = max(1f, bottom - top)
+                        val firstDay = sorted.first().dayIndex
+                        val lastDay = sorted.last().dayIndex
+                        val daySpan = max(1, lastDay - firstDay)
+
+                        fun pointFor(reading: DailyVoltageReading): Offset {
+                            val x = if (sorted.size == 1) {
+                                left + chartWidth / 2f
+                            } else {
+                                left + ((reading.dayIndex - firstDay).toFloat() / daySpan) * chartWidth
+                            }
+                            val y = bottom - voltageFraction(reading.volts.toFloat()) * chartHeight
+                            return Offset(x, y)
+                        }
+
+                        val closest = sorted.minByOrNull { reading ->
+                            val point = pointFor(reading)
+                            val dx = tap.x - point.x
+                            val dy = tap.y - point.y
+                            dx * dx + dy * dy
+                        }
+                        val hitRadius = 22.dp.toPx()
+                        if (closest != null) {
+                            val point = pointFor(closest)
+                            val dx = tap.x - point.x
+                            val dy = tap.y - point.y
+                            if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+                                selectedReading = closest
+                            }
+                        }
+                    }
+                }
+        ) {
+            val left = HISTORY_LEFT_MARGIN.toPx()
+            val right = size.width - HISTORY_RIGHT_MARGIN.toPx()
+            val top = HISTORY_TOP_MARGIN.toPx()
+            val bottom = size.height - HISTORY_BOTTOM_MARGIN.toPx()
             val chartWidth = max(1f, right - left)
             val chartHeight = max(1f, bottom - top)
 
@@ -245,17 +391,28 @@ private fun VoltageHistoryChart(
             band(VoltageScale.YELLOW_MAX, VoltageScale.RED_MAX, Color(0x66EAB308))
             band(VoltageScale.RED_MAX, VoltageScale.MIN, Color(0x55DC2626))
 
+            val gridColor = Color(0x33718096)
+            val axisPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.rgb(71, 85, 105)
+                textSize = 10.sp.toPx()
+            }
             listOf(VoltageScale.MIN, VoltageScale.RED_MAX, VoltageScale.YELLOW_MAX, VoltageScale.MAX).forEach { voltage ->
                 val y = yFor(voltage)
                 drawLine(
-                    color = Color(0x55FFFFFF),
+                    color = gridColor,
                     start = Offset(left, y),
                     end = Offset(right, y),
-                    strokeWidth = 1.dp.toPx()
+                    strokeWidth = 0.75.dp.toPx()
+                )
+                axisPaint.textAlign = Paint.Align.RIGHT
+                drawContext.canvas.nativeCanvas.drawText(
+                    String.format(Locale.US, "%.1f V", voltage),
+                    left - 5.dp.toPx(),
+                    y + 3.5.dp.toPx(),
+                    axisPaint
                 )
             }
 
-            val sorted = readings.sortedBy { it.dayIndex }
             if (sorted.isEmpty()) {
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = android.graphics.Color.rgb(71, 85, 105)
@@ -287,6 +444,30 @@ private fun VoltageHistoryChart(
                 Offset(xFor(reading), yFor(reading.volts.toFloat()))
             }
 
+            val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.rgb(71, 85, 105)
+                textAlign = Paint.Align.CENTER
+                textSize = 10.sp.toPx()
+            }
+            sorted.forEachIndexed { index, reading ->
+                val point = points[index]
+                drawLine(
+                    color = gridColor,
+                    start = Offset(point.x, top),
+                    end = Offset(point.x, bottom),
+                    strokeWidth = 0.75.dp.toPx()
+                )
+                drawContext.canvas.nativeCanvas.save()
+                drawContext.canvas.nativeCanvas.rotate(-35f, point.x, bottom + 15.dp.toPx())
+                drawContext.canvas.nativeCanvas.drawText(
+                    reading.label,
+                    point.x,
+                    bottom + 15.dp.toPx(),
+                    datePaint
+                )
+                drawContext.canvas.nativeCanvas.restore()
+            }
+
             points.zipWithNext().forEach { (start, end) ->
                 drawLine(
                     color = Color(0xFF334155),
@@ -297,15 +478,8 @@ private fun VoltageHistoryChart(
                 )
             }
 
-            val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.rgb(30, 41, 59)
-                textAlign = Paint.Align.CENTER
-                textSize = 11.sp.toPx()
-            }
-            sorted.forEachIndexed { index, reading ->
+            sorted.forEachIndexed { index, _ ->
                 val point = points[index]
-                val labelX = point.x.coerceIn(left + 14.dp.toPx(), right - 14.dp.toPx())
-                val labelY = (point.y - 10.dp.toPx()).coerceAtLeast(top + 12.dp.toPx())
                 drawCircle(
                     color = Color.White,
                     radius = 6.dp.toPx(),
@@ -316,13 +490,52 @@ private fun VoltageHistoryChart(
                     radius = 4.dp.toPx(),
                     center = point
                 )
-                drawContext.canvas.nativeCanvas.save()
-                drawContext.canvas.nativeCanvas.rotate(-35f, labelX, labelY)
-                drawContext.canvas.nativeCanvas.drawText(reading.label, labelX, labelY, labelPaint)
-                drawContext.canvas.nativeCanvas.restore()
             }
         }
     }
+
+    selectedReading?.let { reading ->
+        AlertDialog(
+            onDismissRequest = { selectedReading = null },
+            title = { Text("Saved voltage reading") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Date: ${historyDateText(reading)}")
+                    Text("Time: ${historyTimeText(reading)}")
+                    Text(
+                        "Voltage: ${String.format(Locale.US, "%.3f V", reading.volts)} " +
+                            "(${reading.millivolts} mV)"
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedReading = null }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+}
+
+private val HISTORY_LEFT_MARGIN = 48.dp
+private val HISTORY_RIGHT_MARGIN = 14.dp
+private val HISTORY_TOP_MARGIN = 12.dp
+private val HISTORY_BOTTOM_MARGIN = 36.dp
+
+private fun historyDateText(reading: DailyVoltageReading): String {
+    val date = runCatching {
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            isLenient = false
+        }.parse(reading.dateKey)
+    }.getOrNull()
+    return date?.let { DateFormat.getDateInstance(DateFormat.MEDIUM).format(it) }
+        ?: reading.dateKey
+}
+
+private fun historyTimeText(reading: DailyVoltageReading): String {
+    return reading.timestampMillis?.let { timestamp ->
+        DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(timestamp))
+    } ?: "Not available for older saved readings"
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawScaleArc(
@@ -476,7 +689,9 @@ private fun ReceivingPreview() {
         onGrantPermissions = {},
         onStart = {},
         onStop = {},
-        onRetry = {}
+        onRetry = {},
+        onBackup = {},
+        onRestore = {}
     )
 }
 
@@ -489,7 +704,9 @@ private fun DisconnectedPreview() {
         onGrantPermissions = {},
         onStart = {},
         onStop = {},
-        onRetry = {}
+        onRetry = {},
+        onBackup = {},
+        onRestore = {}
     )
 }
 
@@ -502,6 +719,8 @@ private fun ScanningPreview() {
         onGrantPermissions = {},
         onStart = {},
         onStop = {},
-        onRetry = {}
+        onRetry = {},
+        onBackup = {},
+        onRestore = {}
     )
 }
