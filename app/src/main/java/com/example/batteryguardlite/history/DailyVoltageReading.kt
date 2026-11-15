@@ -5,7 +5,11 @@ data class DailyVoltageReading(
     val dayIndex: Int,
     val label: String,
     val millivolts: Int,
-    val timestampMillis: Long? = null
+    val timestampMillis: Long? = null,
 ) {
-    val volts: Double = millivolts / 1000.0
+    val volts: Double = millivolts / MILLIVOLTS_PER_VOLT
+
+    companion object {
+        const val MILLIVOLTS_PER_VOLT = 1_000.0
+    }
 }

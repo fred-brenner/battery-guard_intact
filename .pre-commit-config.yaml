@@ -1,0 +1,33 @@
+# Lint hooks for this repo.
+#
+# All tools are provided by mise (see mise.toml) — the hooks call the
+# binaries directly, so mise.toml is the single source of truth for
+# versions. Before your first commit:
+#
+#   mise install
+#   pre-commit install
+#
+# Run all hooks manually with: pre-commit run --all-files
+repos:
+  - repo: local
+    hooks:
+      - id: actionlint
+        name: actionlint (GitHub Actions workflows)
+        entry: actionlint
+        language: system
+        files: '^\.github/workflows/.*\.ya?ml$'
+      - id: zizmor
+        name: zizmor (GitHub Actions security)
+        entry: zizmor
+        language: system
+        files: '^\.github/workflows/.*\.ya?ml$'
+      - id: shellcheck
+        name: shellcheck (shell scripts)
+        entry: shellcheck
+        language: system
+        files: '\.(sh|bash|ksh|zsh)$'
+      - id: ktlint
+        name: ktlint (Kotlin formatting)
+        entry: ktlint
+        language: system
+        files: '\.kts?$'

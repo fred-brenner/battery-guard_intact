@@ -27,7 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 
 class BatteryBleManager(
-    private val context: Context
+    private val context: Context,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val bluetoothManager =
@@ -41,123 +41,135 @@ class BatteryBleManager(
     private var isUserStopped = true
     private var isScanning = false
 
-    private val scanTimeoutRunnable = Runnable {
-        if (isScanning) {
-            stopScan()
-            _state.value = BleState.Disconnected("Device not found")
-        }
-    }
-
-    private val reconnectRunnable = Runnable {
-        if (!isUserStopped) start()
-    }
-
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            handleScanResult(result)
-        }
-
-        override fun onBatchScanResults(results: MutableList<ScanResult>) {
-            results.forEach(::handleScanResult)
-        }
-
-        override fun onScanFailed(errorCode: Int) {
-            isScanning = false
-            _state.value = BleState.Error("BLE scan failed: $errorCode")
-        }
-    }
-
-    private val gattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            val address = gatt.device?.address.orEmpty()
-            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
-                _state.value = BleState.Discovering(address)
-                gatt.discoverServices()
-                return
-            }
-
-            if (newState == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
-                closeGatt(gatt)
-                _state.value = BleState.Disconnected("Disconnected; retrying...")
-                scheduleReconnect()
+    private val scanTimeoutRunnable =
+        Runnable {
+            if (isScanning) {
+                stopScan()
+                _state.value = BleState.Disconnected("Device not found")
             }
         }
 
-        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                failProtocol(gatt, "Service discovery failed: $status")
-                return
-            }
-
-            val service = gatt.getService(VOLTAGE_SERVICE_UUID)
-            val characteristic = service?.getCharacteristic(VOLTAGE_CHARACTERISTIC_UUID)
-            if (characteristic == null) {
-                failProtocol(gatt, "Voltage service or characteristic missing")
-                return
-            }
-
-            val descriptor = characteristic.getDescriptor(CCCD_UUID)
-            if (descriptor == null) {
-                failProtocol(gatt, "Notification descriptor missing")
-                return
-            }
-
-            _state.value = BleState.Subscribing(gatt.device?.address.orEmpty())
-            enableNotifications(gatt, characteristic, descriptor)
+    private val reconnectRunnable =
+        Runnable {
+            if (!isUserStopped) start()
         }
 
-        override fun onDescriptorWrite(
-            gatt: BluetoothGatt,
-            descriptor: BluetoothGattDescriptor,
-            status: Int
-        ) {
-            if (descriptor.uuid != CCCD_UUID) return
-
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                failProtocol(gatt, "Notification subscription failed: $status")
-                return
+    private val scanCallback =
+        object : ScanCallback() {
+            override fun onScanResult(
+                callbackType: Int,
+                result: ScanResult,
+            ) {
+                handleScanResult(result)
             }
 
-            _state.value = BleState.Subscribing(gatt.device?.address.orEmpty())
+            override fun onBatchScanResults(results: MutableList<ScanResult>) {
+                results.forEach(::handleScanResult)
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                isScanning = false
+                _state.value = BleState.Error("BLE scan failed: $errorCode")
+            }
         }
 
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray
-        ) {
-            handleNotification(gatt, characteristic.uuid, value)
-        }
+    private val gattCallback =
+        object : BluetoothGattCallback() {
+            override fun onConnectionStateChange(
+                gatt: BluetoothGatt,
+                status: Int,
+                newState: Int,
+            ) {
+                val address = gatt.device?.address.orEmpty()
+                if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
+                    _state.value = BleState.Discovering(address)
+                    gatt.discoverServices()
+                    return
+                }
 
-        @Deprecated("Used by Android 12 and older")
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic
-        ) {
-            handleNotification(gatt, characteristic.uuid, characteristic.value ?: return)
+                if (newState == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
+                    closeGatt(gatt)
+                    _state.value = BleState.Disconnected("Disconnected; retrying...")
+                    scheduleReconnect()
+                }
+            }
+
+            override fun onServicesDiscovered(
+                gatt: BluetoothGatt,
+                status: Int,
+            ) {
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    failProtocol(gatt, "Service discovery failed: $status")
+                    return
+                }
+
+                val service = gatt.getService(VOLTAGE_SERVICE_UUID)
+                val characteristic = service?.getCharacteristic(VOLTAGE_CHARACTERISTIC_UUID)
+                if (characteristic == null) {
+                    failProtocol(gatt, "Voltage service or characteristic missing")
+                    return
+                }
+
+                val descriptor = characteristic.getDescriptor(CCCD_UUID)
+                if (descriptor == null) {
+                    failProtocol(gatt, "Notification descriptor missing")
+                    return
+                }
+
+                _state.value = BleState.Subscribing(gatt.device?.address.orEmpty())
+                enableNotifications(gatt, characteristic, descriptor)
+            }
+
+            override fun onDescriptorWrite(
+                gatt: BluetoothGatt,
+                descriptor: BluetoothGattDescriptor,
+                status: Int,
+            ) {
+                if (descriptor.uuid != CCCD_UUID) return
+
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    failProtocol(gatt, "Notification subscription failed: $status")
+                    return
+                }
+
+                _state.value = BleState.Subscribing(gatt.device?.address.orEmpty())
+            }
+
+            override fun onCharacteristicChanged(
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+                value: ByteArray,
+            ) {
+                handleNotification(gatt, characteristic.uuid, value)
+            }
+
+            @Deprecated("Used by Android 12 and older")
+            override fun onCharacteristicChanged(
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+            ) {
+                handleNotification(gatt, characteristic.uuid, characteristic.value ?: return)
+            }
         }
-    }
 
     fun hasBluetoothAdapter(): Boolean = bluetoothAdapter != null
 
     fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
 
-    fun hasRequiredPermissions(): Boolean {
-        return requiredPermissions().all { permission ->
+    fun hasRequiredPermissions(): Boolean =
+        requiredPermissions().all { permission ->
             ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
         }
-    }
 
-    fun requiredPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    fun requiredPermissions(): Array<String> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT
+                Manifest.permission.BLUETOOTH_CONNECT,
             )
         } else {
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
-    }
 
     fun markPermissionMissing() {
         _state.value = BleState.PermissionMissing
@@ -195,14 +207,18 @@ class BatteryBleManager(
             return
         }
 
-        val filters = listOf(
-            ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(VOLTAGE_SERVICE_UUID))
+        val filters =
+            listOf(
+                ScanFilter
+                    .Builder()
+                    .setServiceUuid(ParcelUuid(VOLTAGE_SERVICE_UUID))
+                    .build(),
+            )
+        val settings =
+            ScanSettings
+                .Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build()
-        )
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
 
         _state.value = BleState.Scanning
         isScanning = true
@@ -242,11 +258,12 @@ class BatteryBleManager(
         if (currentGatt != null) return
 
         _state.value = BleState.Connecting(device.address)
-        currentGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        } else {
-            device.connectGatt(context, false, gattCallback)
-        }
+        currentGatt =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            } else {
+                device.connectGatt(context, false, gattCallback)
+            }
     }
 
     @SuppressLint("MissingPermission")
@@ -261,7 +278,7 @@ class BatteryBleManager(
     private fun enableNotifications(
         gatt: BluetoothGatt,
         characteristic: BluetoothGattCharacteristic,
-        descriptor: BluetoothGattDescriptor
+        descriptor: BluetoothGattDescriptor,
     ) {
         val notificationEnabled = gatt.setCharacteristicNotification(characteristic, true)
         if (!notificationEnabled) {
@@ -269,14 +286,15 @@ class BatteryBleManager(
             return
         }
 
-        val writeStarted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothGatt.GATT_SUCCESS
-        } else {
-            @Suppress("DEPRECATION")
-            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-            @Suppress("DEPRECATION")
-            gatt.writeDescriptor(descriptor)
-        }
+        val writeStarted =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothGatt.GATT_SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                @Suppress("DEPRECATION")
+                gatt.writeDescriptor(descriptor)
+            }
 
         if (!writeStarted) {
             failProtocol(gatt, "Could not write notification descriptor")
@@ -286,19 +304,20 @@ class BatteryBleManager(
     private fun handleNotification(
         gatt: BluetoothGatt,
         characteristicUuid: UUID,
-        value: ByteArray
+        value: ByteArray,
     ) {
         if (characteristicUuid != VOLTAGE_CHARACTERISTIC_UUID) return
 
         val parsed = BatteryVoltageParser.parse(value) ?: return
-        _state.value = BleState.Receiving(
-            address = gatt.device?.address.orEmpty(),
-            voltage = parsed.volts,
-            millivolts = parsed.millivolts,
-            lastUpdateMillis = System.currentTimeMillis(),
-            rawHex = parsed.rawHex,
-            batteryType = parsed.batteryType
-        )
+        _state.value =
+            BleState.Receiving(
+                address = gatt.device?.address.orEmpty(),
+                voltage = parsed.volts,
+                millivolts = parsed.millivolts,
+                lastUpdateMillis = System.currentTimeMillis(),
+                rawHex = parsed.rawHex,
+                batteryType = parsed.batteryType,
+            )
     }
 
     private fun scheduleReconnect() {
@@ -307,7 +326,10 @@ class BatteryBleManager(
         mainHandler.postDelayed(reconnectRunnable, RECONNECT_DELAY_MILLIS)
     }
 
-    private fun failProtocol(gatt: BluetoothGatt, message: String) {
+    private fun failProtocol(
+        gatt: BluetoothGatt,
+        message: String,
+    ) {
         closeGatt(gatt)
         _state.value = BleState.Error(message)
     }

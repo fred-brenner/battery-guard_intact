@@ -5,8 +5,8 @@ import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,27 +46,30 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by bleManager.state.collectAsState()
             var historyReadings by remember { mutableStateOf(historyStore.readings()) }
-            val backupLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.CreateDocument("text/csv")
-            ) { uri ->
-                if (uri != null) backupTo(uri)
-            }
-            val restoreLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.OpenDocument()
-            ) { uri ->
-                if (uri != null) {
-                    restoreFrom(uri) { restoredReadings ->
-                        historyReadings = restoredReadings
+            val backupLauncher =
+                rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.CreateDocument("text/csv"),
+                ) { uri ->
+                    if (uri != null) backupTo(uri)
+                }
+            val restoreLauncher =
+                rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument(),
+                ) { uri ->
+                    if (uri != null) {
+                        restoreFrom(uri) { restoredReadings ->
+                            historyReadings = restoredReadings
+                        }
                     }
                 }
-            }
 
             LaunchedEffect(state) {
                 val receiving = state as? BleState.Receiving ?: return@LaunchedEffect
-                historyReadings = historyStore.saveReading(
-                    millivolts = receiving.millivolts,
-                    timestampMillis = receiving.lastUpdateMillis
-                )
+                historyReadings =
+                    historyStore.saveReading(
+                        millivolts = receiving.millivolts,
+                        timestampMillis = receiving.lastUpdateMillis,
+                    )
             }
 
             BatteryScreen(
@@ -83,10 +86,10 @@ class MainActivity : ComponentActivity() {
                             "text/csv",
                             "text/comma-separated-values",
                             "application/csv",
-                            "text/plain"
-                        )
+                            "text/plain",
+                        ),
                     )
-                }
+                },
             )
         }
 
@@ -124,9 +127,10 @@ class MainActivity : ComponentActivity() {
 
     private fun backupTo(uri: Uri) {
         runCatching {
-            val output = requireNotNull(contentResolver.openOutputStream(uri)) {
-                "Could not open the selected backup file"
-            }
+            val output =
+                requireNotNull(contentResolver.openOutputStream(uri)) {
+                    "Could not open the selected backup file"
+                }
             output.bufferedWriter().use { writer ->
                 writer.write(historyStore.exportCsv())
             }
@@ -139,7 +143,7 @@ class MainActivity : ComponentActivity() {
 
     private fun restoreFrom(
         uri: Uri,
-        onRestored: (List<DailyVoltageReading>) -> Unit
+        onRestored: (List<DailyVoltageReading>) -> Unit,
     ) {
         val fileName = displayName(uri)
         if (fileName == null || !fileName.endsWith(".csv", ignoreCase = true)) {
@@ -151,21 +155,26 @@ class MainActivity : ComponentActivity() {
             historyStore.importCsv(readCsv(uri))
         }.onSuccess { result ->
             onRestored(result.readings)
-            val overlapText = if (result.skippedOverlappingCount > 0) {
-                ", ${result.skippedOverlappingCount} overlapping skipped"
-            } else {
-                ""
-            }
+            val overlapText =
+                if (result.skippedOverlappingCount > 0) {
+                    ", ${result.skippedOverlappingCount} overlapping skipped"
+                } else {
+                    ""
+                }
             showMessage("Restore complete: ${result.importedCount} imported$overlapText")
         }.onFailure { error ->
             showMessage("Restore failed: ${error.message ?: "invalid CSV"}")
         }
     }
 
+    // detekt's UnreachableCode dataflow cannot model the `while (true)` back edge after
+    // `reader.readLine() ?: break` and falsely flags the loop body as unreachable.
+    @Suppress("UnreachableCode")
     private fun readCsv(uri: Uri): String {
-        val input = requireNotNull(contentResolver.openInputStream(uri)) {
-            "Could not open the selected CSV file"
-        }
+        val input =
+            requireNotNull(contentResolver.openInputStream(uri)) {
+                "Could not open the selected CSV file"
+            }
         return input.bufferedReader().use { reader ->
             buildString {
                 var lineCount = 0
@@ -179,18 +188,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun displayName(uri: Uri): String? {
-        return contentResolver.query(
-            uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
-        }
-    }
+    private fun displayName(uri: Uri): String? =
+        contentResolver
+            .query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
+            }
 
     private fun backupFileName(): String {
         val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())

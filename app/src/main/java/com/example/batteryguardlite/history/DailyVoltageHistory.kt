@@ -9,7 +9,7 @@ import kotlin.math.roundToInt
 data class CsvImportResult(
     val readings: List<DailyVoltageReading>,
     val importedCount: Int,
-    val skippedOverlappingCount: Int
+    val skippedOverlappingCount: Int,
 )
 
 object DailyVoltageHistory {
@@ -17,10 +17,14 @@ object DailyVoltageHistory {
     private const val MIN_MILLIVOLTS = 3_000
     private const val MAX_MILLIVOLTS = 32_000
 
-    fun readingFor(millivolts: Int, timestampMillis: Long): DailyVoltageReading {
-        val calendar = Calendar.getInstance().apply {
-            timeInMillis = timestampMillis
-        }
+    fun readingFor(
+        millivolts: Int,
+        timestampMillis: Long,
+    ): DailyVoltageReading {
+        val calendar =
+            Calendar.getInstance().apply {
+                timeInMillis = timestampMillis
+            }
         val year = calendar.get(Calendar.YEAR)
         val month = calendar.get(Calendar.MONTH) + 1
         val day = calendar.get(Calendar.DAY_OF_MONTH)
@@ -31,13 +35,13 @@ object DailyVoltageHistory {
             dayIndex = dayIndex(year, month, day),
             label = label,
             millivolts = millivolts,
-            timestampMillis = timestampMillis
+            timestampMillis = timestampMillis,
         )
     }
 
     fun upsert(
         readings: List<DailyVoltageReading>,
-        newReading: DailyVoltageReading
+        newReading: DailyVoltageReading,
     ): List<DailyVoltageReading> {
         if (newReading.millivolts !in MIN_MILLIVOLTS..MAX_MILLIVOLTS) {
             return readings.sortedLimited()
@@ -47,19 +51,20 @@ object DailyVoltageHistory {
             .sortedLimited()
     }
 
-    fun serialize(readings: List<DailyVoltageReading>): String {
-        return readings.sortedLimited()
+    fun serialize(readings: List<DailyVoltageReading>): String =
+        readings
+            .sortedLimited()
             .joinToString(separator = "\n") { reading ->
                 listOfNotNull(
                     reading.dateKey,
                     reading.millivolts.toString(),
-                    reading.timestampMillis?.toString()
+                    reading.timestampMillis?.toString(),
                 ).joinToString(",")
             }
-    }
 
     fun deserialize(raw: String): List<DailyVoltageReading> {
-        return raw.lineSequence()
+        return raw
+            .lineSequence()
             .mapNotNull { line ->
                 val parts = line.trim().split(",")
                 if (parts.size !in 2..3) return@mapNotNull null
@@ -71,8 +76,7 @@ object DailyVoltageHistory {
                 if (parts.size == 3 && timestampMillis == null) return@mapNotNull null
 
                 readingFromDateKey(dateKey, millivolts, timestampMillis)
-            }
-            .toList()
+            }.toList()
             .distinctByLatestDate()
             .sortedLimited()
     }
@@ -99,23 +103,27 @@ object DailyVoltageHistory {
 
     fun importCsv(
         existingReadings: List<DailyVoltageReading>,
-        rawCsv: String
+        rawCsv: String,
     ): CsvImportResult {
         val lines = rawCsv.lineSequence().filter { it.isNotBlank() }.toList()
         require(lines.isNotEmpty()) { "The CSV file is empty" }
 
-        val header = parseCsvLine(lines.first()).mapIndexed { index, value ->
-            val cleaned = if (index == 0) value.removePrefix("\uFEFF") else value
-            cleaned.trim().lowercase(Locale.US)
-        }
+        val header =
+            parseCsvLine(lines.first()).mapIndexed { index, value ->
+                val cleaned = if (index == 0) value.removePrefix("\uFEFF") else value
+                cleaned.trim().lowercase(Locale.US)
+            }
         val dateIndex = header.indexOf("date")
         val timeIndex = header.indexOf("time")
-        val voltageIndex = listOf("voltage_v", "voltage", "volts")
-            .firstNotNullOfOrNull { name -> header.indexOf(name).takeIf { it >= 0 } } ?: -1
-        val millivoltsIndex = listOf("millivolts", "voltage_mv")
-            .firstNotNullOfOrNull { name -> header.indexOf(name).takeIf { it >= 0 } } ?: -1
-        val timestampIndex = listOf("timestamp_millis", "timestamp")
-            .firstNotNullOfOrNull { name -> header.indexOf(name).takeIf { it >= 0 } } ?: -1
+        val voltageIndex =
+            listOf("voltage_v", "voltage", "volts")
+                .firstNotNullOfOrNull { name -> header.indexOf(name).takeIf { it >= 0 } } ?: -1
+        val millivoltsIndex =
+            listOf("millivolts", "voltage_mv")
+                .firstNotNullOfOrNull { name -> header.indexOf(name).takeIf { it >= 0 } } ?: -1
+        val timestampIndex =
+            listOf("timestamp_millis", "timestamp")
+                .firstNotNullOfOrNull { name -> header.indexOf(name).takeIf { it >= 0 } } ?: -1
 
         require(dateIndex >= 0 && (millivoltsIndex >= 0 || voltageIndex >= 0)) {
             "CSV must contain a date column and a voltage or millivolts column"
@@ -134,38 +142,46 @@ object DailyVoltageHistory {
             }
             if (dateKey in importedByDate) return@forEach
 
-            val millivolts = columns.valueAt(millivoltsIndex).toIntOrNull()
-                ?: columns.valueAt(voltageIndex).toDoubleOrNull()?.times(1000.0)?.roundToInt()
-                ?: return@forEach
+            val millivolts =
+                columns.valueAt(millivoltsIndex).toIntOrNull()
+                    ?: columns
+                        .valueAt(voltageIndex)
+                        .toDoubleOrNull()
+                        ?.times(1000.0)
+                        ?.roundToInt()
+                    ?: return@forEach
             if (millivolts !in MIN_MILLIVOLTS..MAX_MILLIVOLTS) return@forEach
 
             val explicitTimestamp = columns.valueAt(timestampIndex).toLongOrNull()
-            val parsedTimestamp = explicitTimestamp ?: parseCsvTimestamp(
-                dateKey = dateKey,
-                time = columns.valueAt(timeIndex)
-            )
-            val reading = readingFromDateKey(dateKey, millivolts, parsedTimestamp)
-                ?: return@forEach
+            val parsedTimestamp =
+                explicitTimestamp ?: parseCsvTimestamp(
+                    dateKey = dateKey,
+                    time = columns.valueAt(timeIndex),
+                )
+            val reading =
+                readingFromDateKey(dateKey, millivolts, parsedTimestamp)
+                    ?: return@forEach
             importedByDate[dateKey] = reading
         }
 
         val combined = (existingReadings + importedByDate.values).sortedLimited()
-        val retainedImportedDates = combined.mapTo(mutableSetOf()) { it.dateKey }
-            .intersect(importedByDate.keys)
+        val retainedImportedDates =
+            combined
+                .mapTo(mutableSetOf()) { it.dateKey }
+                .intersect(importedByDate.keys)
         return CsvImportResult(
             readings = combined,
             importedCount = retainedImportedDates.size,
-            skippedOverlappingCount = skippedOverlappingCount
+            skippedOverlappingCount = skippedOverlappingCount,
         )
     }
 
-    private fun List<DailyVoltageReading>.sortedLimited(): List<DailyVoltageReading> {
-        return sortedBy { it.dayIndex }.takeLast(MAX_READINGS)
-    }
+    private fun List<DailyVoltageReading>.sortedLimited(): List<DailyVoltageReading> = sortedBy { it.dayIndex }.takeLast(MAX_READINGS)
 
-    private fun List<DailyVoltageReading>.distinctByLatestDate(): List<DailyVoltageReading> {
-        return groupBy { it.dateKey }.values.map { sameDate -> sameDate.last() }
-    }
+    private fun List<DailyVoltageReading>.distinctByLatestDate(): List<DailyVoltageReading> =
+        groupBy {
+            it.dateKey
+        }.values.map { sameDate -> sameDate.last() }
 
     private fun parseCsvLine(line: String): List<String> {
         val values = mutableListOf<String>()
@@ -179,12 +195,19 @@ object DailyVoltageHistory {
                     value.append('"')
                     index += 1
                 }
-                char == '"' -> inQuotes = !inQuotes
+
+                char == '"' -> {
+                    inQuotes = !inQuotes
+                }
+
                 char == ',' && !inQuotes -> {
                     values += value.toString()
                     value.clear()
                 }
-                else -> value.append(char)
+
+                else -> {
+                    value.append(char)
+                }
             }
             index += 1
         }
@@ -193,23 +216,26 @@ object DailyVoltageHistory {
         return values
     }
 
-    private fun List<String>.valueAt(index: Int): String {
-        return if (index >= 0) getOrNull(index).orEmpty().trim() else ""
-    }
+    private fun List<String>.valueAt(index: Int): String = if (index >= 0) getOrNull(index).orEmpty().trim() else ""
 
-    private fun parseCsvTimestamp(dateKey: String, time: String): Long? {
+    private fun parseCsvTimestamp(
+        dateKey: String,
+        time: String,
+    ): Long? {
         if (time.isBlank()) return null
         return runCatching {
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).apply {
-                isLenient = false
-            }.parse("$dateKey ${time.trim()}")?.time
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+                .apply {
+                    isLenient = false
+                }.parse("$dateKey ${time.trim()}")
+                ?.time
         }.getOrNull()
     }
 
     private fun readingFromDateKey(
         dateKey: String,
         millivolts: Int,
-        timestampMillis: Long?
+        timestampMillis: Long?,
     ): DailyVoltageReading? {
         val parts = dateKey.split("-")
         if (parts.size != 3) return null
@@ -219,15 +245,18 @@ object DailyVoltageHistory {
         val day = parts[2].toIntOrNull() ?: return null
         if (month !in 1..12 || day !in 1..31) return null
 
-        val strictDate = runCatching {
-            SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                isLenient = false
-            }.parse(dateKey)
-        }.getOrNull() ?: return null
+        val strictDate =
+            runCatching {
+                SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    .apply {
+                        isLenient = false
+                    }.parse(dateKey)
+            }.getOrNull() ?: return null
 
-        val calendar = Calendar.getInstance().apply {
-            time = strictDate
-        }
+        val calendar =
+            Calendar.getInstance().apply {
+                time = strictDate
+            }
         val parsedYear = calendar.get(Calendar.YEAR)
         val parsedMonth = calendar.get(Calendar.MONTH) + 1
         val parsedDay = calendar.get(Calendar.DAY_OF_MONTH)
@@ -237,11 +266,15 @@ object DailyVoltageHistory {
             dayIndex = dayIndex(parsedYear, parsedMonth, parsedDay),
             label = "%02d.%02d".format(Locale.US, parsedDay, parsedMonth),
             millivolts = millivolts,
-            timestampMillis = timestampMillis
+            timestampMillis = timestampMillis,
         )
     }
 
-    private fun dayIndex(year: Int, month: Int, day: Int): Int {
+    private fun dayIndex(
+        year: Int,
+        month: Int,
+        day: Int,
+    ): Int {
         var y = year
         var m = month
         if (m <= 2) {

@@ -1,9 +1,10 @@
-.gradle/
-.gradle-local/
-.android-sdk/
-.jdk/
-build/
-app/build/
-local.properties
 *.iml
+.android-sdk/
+.gradle-local/
+.gradle/
+.jdk/
 /.idea/*
+app/build/
+build/
+local.properties
+scratch/
