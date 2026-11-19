@@ -7,5 +7,3 @@ actionlint = "1.7.12"
 zizmor = "1.32.0"
 ktlint = "1.8.0"
 
-[env]
-ZIZMOR_GITHUB_TOKEN = "{{ exec(command='sh -c \"gh auth token 2>/dev/null || true\"') }}"
