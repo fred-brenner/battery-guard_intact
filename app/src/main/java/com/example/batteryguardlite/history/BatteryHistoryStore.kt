@@ -2,18 +2,25 @@ package com.example.batteryguardlite.history
 
 import android.content.Context
 
-class BatteryHistoryStore(context: Context) {
+class BatteryHistoryStore(
+    context: Context,
+) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
-    fun readings(): List<DailyVoltageReading> {
-        return DailyVoltageHistory.deserialize(preferences.getString(KEY_READINGS, "").orEmpty())
-    }
-
-    fun saveReading(millivolts: Int, timestampMillis: Long): List<DailyVoltageReading> {
-        val next = DailyVoltageHistory.upsert(
-            readings = readings(),
-            newReading = DailyVoltageHistory.readingFor(millivolts, timestampMillis)
+    fun readings(): List<DailyVoltageReading> =
+        DailyVoltageHistory.deserialize(
+            preferences.getString(KEY_READINGS, "").orEmpty(),
         )
+
+    fun saveReading(
+        millivolts: Int,
+        timestampMillis: Long,
+    ): List<DailyVoltageReading> {
+        val next =
+            DailyVoltageHistory.upsert(
+                readings = readings(),
+                newReading = DailyVoltageHistory.readingFor(millivolts, timestampMillis),
+            )
         persist(next)
         return next
     }
@@ -21,16 +28,18 @@ class BatteryHistoryStore(context: Context) {
     fun exportCsv(): String = DailyVoltageHistory.toCsv(readings())
 
     fun importCsv(rawCsv: String): CsvImportResult {
-        val result = DailyVoltageHistory.importCsv(
-            existingReadings = readings(),
-            rawCsv = rawCsv
-        )
+        val result =
+            DailyVoltageHistory.importCsv(
+                existingReadings = readings(),
+                rawCsv = rawCsv,
+            )
         persist(result.readings)
         return result
     }
 
     private fun persist(readings: List<DailyVoltageReading>) {
-        preferences.edit()
+        preferences
+            .edit()
             .putString(KEY_READINGS, DailyVoltageHistory.serialize(readings))
             .apply()
     }

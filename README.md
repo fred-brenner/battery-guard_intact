@@ -55,8 +55,11 @@ Payloads shorter than 3 bytes are ignored. Values below 3000 mV or above 32000 m
 
 ## Build
 
+The build toolchain (JDK + Gradle) is pinned in `mise.toml`. Install it, then build:
+
 ```bash
-./gradlew assembleDebug
+mise install
+gradle assembleDebug
 ```
 
 Expected APK:
@@ -75,8 +78,8 @@ OR
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Run parser tests:
+Run unit tests:
 
 ```bash
-./gradlew testDebugUnitTest
+gradle testDebugUnitTest
 ```
